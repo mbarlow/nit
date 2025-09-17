@@ -5,20 +5,52 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strconv"
 
 	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
 )
 
 func getAll(c echo.Context, table string) error {
-	query := fmt.Sprintf("SELECT id, data, created, updated FROM %s", table)
-	rows, err := db.Query(query)
+	// Parse pagination parameters
+	limitStr := c.QueryParam("limit")
+	offsetStr := c.QueryParam("offset")
+
+	limit := 10 // default limit
+	offset := 0 // default offset
+
+	if limitStr != "" {
+		if l, err := strconv.Atoi(limitStr); err == nil && l > 0 {
+			limit = l
+			if limit > 100 { // max limit to prevent abuse
+				limit = 100
+			}
+		}
+	}
+
+	if offsetStr != "" {
+		if o, err := strconv.Atoi(offsetStr); err == nil && o >= 0 {
+			offset = o
+		}
+	}
+
+	// Get total count
+	countQuery := fmt.Sprintf("SELECT COUNT(*) FROM %s", table)
+	var totalItems int
+	err := db.QueryRow(countQuery).Scan(&totalItems)
+	if err != nil {
+		return err
+	}
+
+	// Get paginated results
+	query := fmt.Sprintf("SELECT id, data, created, updated FROM %s ORDER BY created DESC LIMIT ? OFFSET ?", table)
+	rows, err := db.Query(query, limit, offset)
 	if err != nil {
 		return err
 	}
 	defer rows.Close()
 
-	var results []map[string]interface{}
+	items := []map[string]interface{}{}
 	for rows.Next() {
 		var id, data, created, updated string
 		rows.Scan(&id, &data, &created, &updated)
@@ -32,10 +64,19 @@ func getAll(c echo.Context, table string) error {
 			"created": created,
 			"updated": updated,
 		}
-		results = append(results, result)
+		items = append(items, result)
 	}
 
-	return c.JSON(http.StatusOK, results)
+	// Build paginated response
+	response := map[string]interface{}{
+		"items":       items,
+		"total_items": totalItems,
+		"limit":       limit,
+		"offset":      offset,
+		"has_more":    offset+limit < totalItems,
+	}
+
+	return c.JSON(http.StatusOK, response)
 }
 
 func getOne(c echo.Context, table, id string) error {
