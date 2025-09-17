@@ -106,7 +106,7 @@ func getOne(c echo.Context, table, id string) error {
 
 func create(c echo.Context, table string) error {
 	var data map[string]interface{}
-	if err := c.Bind(&data); err != nil {
+	if err := json.NewDecoder(c.Request().Body).Decode(&data); err != nil {
 		return err
 	}
 
@@ -124,7 +124,7 @@ func create(c echo.Context, table string) error {
 
 func update(c echo.Context, table, id string) error {
 	var data map[string]interface{}
-	if err := c.Bind(&data); err != nil {
+	if err := json.NewDecoder(c.Request().Body).Decode(&data); err != nil {
 		return err
 	}
 

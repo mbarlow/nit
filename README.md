@@ -7,6 +7,8 @@ A minimal Go service that provides dynamic CRUD operations for any data type wit
 - **Zero configuration** - tables are created automatically
 - **Pure JSON storage** - leverages SQLite's JSON1 extension
 - **Single endpoint** - handles all CRUD operations
+- **UUID identifiers** - uses Google UUIDs for record IDs
+- **Built-in pagination** - automatic pagination support with limit/offset
 - **Minimal code** - ~150 lines total
 
 ## Quick Start
@@ -24,28 +26,55 @@ The API follows a simple pattern: `/{table}` and `/{table}/{id}`
 curl -X POST http://localhost:8080/users \
   -H "Content-Type: application/json" \
   -d '{"name": "John Doe", "email": "john@example.com", "age": 30}'
+
+# Response:
+{"id": "550e8400-e29b-41d4-a716-446655440000"}
 ```
 
-### Get All Records
+### Get All Records (Paginated)
 ```bash
+# Default pagination (limit=10, offset=0)
 curl http://localhost:8080/users
+
+# With pagination parameters
+curl "http://localhost:8080/users?limit=5&offset=10"
+
+# Response:
+{
+  "items": [
+    {
+      "id": "550e8400-e29b-41d4-a716-446655440000",
+      "data": {
+        "name": "John Doe",
+        "email": "john@example.com",
+        "age": 30
+      },
+      "created": "2025-01-15T10:30:00Z",
+      "updated": "2025-01-15T10:30:00Z"
+    }
+  ],
+  "total_items": 42,
+  "limit": 10,
+  "offset": 0,
+  "has_more": true
+}
 ```
 
 ### Get Single Record
 ```bash
-curl http://localhost:8080/users/1
+curl http://localhost:8080/users/550e8400-e29b-41d4-a716-446655440000
 ```
 
 ### Update Record
 ```bash
-curl -X PUT http://localhost:8080/users/1 \
+curl -X PUT http://localhost:8080/users/550e8400-e29b-41d4-a716-446655440000 \
   -H "Content-Type: application/json" \
   -d '{"name": "Jane Doe", "email": "jane@example.com", "age": 25}'
 ```
 
 ### Delete Record
 ```bash
-curl -X DELETE http://localhost:8080/users/1
+curl -X DELETE http://localhost:8080/users/550e8400-e29b-41d4-a716-446655440000
 ```
 
 ## Response Format
