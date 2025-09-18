@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
@@ -34,17 +35,63 @@ func getAll(c echo.Context, table string) error {
 		}
 	}
 
-	// Get total count
-	countQuery := fmt.Sprintf("SELECT COUNT(*) FROM %s", table)
+	// Build WHERE clause for filtering
+	whereClauses := []string{}
+	queryArgs := []interface{}{}
+
+	// Handle date range filters
+	dateFilters := map[string]string{
+		"created_gt":  "created > ?",
+		"created_gte": "created >= ?",
+		"created_lt":  "created < ?",
+		"created_lte": "created <= ?",
+		"updated_gt":  "updated > ?",
+		"updated_gte": "updated >= ?",
+		"updated_lt":  "updated < ?",
+		"updated_lte": "updated <= ?",
+	}
+
+	for param, clause := range dateFilters {
+		if val := c.QueryParam(param); val != "" {
+			whereClauses = append(whereClauses, clause)
+			queryArgs = append(queryArgs, val)
+		}
+	}
+
+	// Handle JSON field filters (anything not a reserved param)
+	reservedParams := map[string]bool{
+		"limit": true, "offset": true,
+		"created_gt": true, "created_gte": true, "created_lt": true, "created_lte": true,
+		"updated_gt": true, "updated_gte": true, "updated_lt": true, "updated_lte": true,
+	}
+
+	// Get all query parameters for JSON field filtering
+	for key, values := range c.QueryParams() {
+		if !reservedParams[key] && len(values) > 0 {
+			// Use json_extract to filter by JSON field
+			// Cast both sides to TEXT for consistent comparison
+			whereClauses = append(whereClauses, fmt.Sprintf("CAST(json_extract(data, '$.%s') AS TEXT) = ?", key))
+			queryArgs = append(queryArgs, values[0])
+		}
+	}
+
+	whereClause := ""
+	if len(whereClauses) > 0 {
+		whereClause = " WHERE " + strings.Join(whereClauses, " AND ")
+	}
+
+	// Get total count with filters
+	countQuery := fmt.Sprintf("SELECT COUNT(*) FROM %s%s", table, whereClause)
 	var totalItems int
-	err := db.QueryRow(countQuery).Scan(&totalItems)
+	err := db.QueryRow(countQuery, queryArgs...).Scan(&totalItems)
 	if err != nil {
 		return err
 	}
 
-	// Get paginated results
-	query := fmt.Sprintf("SELECT id, data, created, updated FROM %s ORDER BY created DESC LIMIT ? OFFSET ?", table)
-	rows, err := db.Query(query, limit, offset)
+	// Get paginated results with filters
+	query := fmt.Sprintf("SELECT id, data, created, updated FROM %s%s ORDER BY created DESC LIMIT ? OFFSET ?", table, whereClause)
+	queryArgs = append(queryArgs, limit, offset)
+	rows, err := db.Query(query, queryArgs...)
 	if err != nil {
 		return err
 	}
